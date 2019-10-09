@@ -33,7 +33,7 @@ let shallowRender = (vnode, context) => renderToString(vnode, context, SHALLOW);
 
 
 /** The default export is an alias of `render()`. */
-function renderToString(vnode, context, opts, inner, isSvgMode, selectValue) {
+async function renderToString(vnode, context, opts, inner, isSvgMode, selectValue) {
 	if (vnode==null || typeof vnode==='boolean') {
 		return '';
 	}
@@ -56,7 +56,6 @@ function renderToString(vnode, context, opts, inner, isSvgMode, selectValue) {
 	if (typeof vnode!=='object' && !nodeName) {
 		return encodeEntities(vnode);
 	}
-
 	// components
 	if (typeof nodeName==='function') {
 		isComponent = true;
@@ -69,7 +68,7 @@ function renderToString(vnode, context, opts, inner, isSvgMode, selectValue) {
 			getChildren(children, vnode.props.children);
 
 			for (let i = 0; i < children.length; i++) {
-				rendered += renderToString(children[i], context, opts, opts.shallowHighOrder!==false, isSvgMode, selectValue);
+				rendered += await renderToString(children[i], context, opts, opts.shallowHighOrder!==false, isSvgMode, selectValue);
 			}
 			return rendered;
 		}
@@ -79,14 +78,19 @@ function renderToString(vnode, context, opts, inner, isSvgMode, selectValue) {
 			let c = vnode.__c = { __v: vnode, context, props: vnode.props };
 			// options.render
 			if (options.__r) options.__r(vnode);
-
-			if (!nodeName.prototype || typeof nodeName.prototype.render!=='function') {
-				// Necessary for createContext api. Setting this property will pass
-				// the context value as `this.context` just for this component.
-				let cxType = nodeName.contextType;
-				let provider = cxType && context[cxType.__c];
-				let cctx = cxType != null ? (provider ? provider.props.value : cxType._defaultValue) : context;
-
+			// Necessary for createContext api. Setting this property will pass
+			// the context value as `this.context` just for this component.
+			let cxType = nodeName.contextType;
+			let provider = cxType && context[cxType.__c];
+			let cctx = cxType != null ? (provider ? provider.props.value : cxType._defaultValue) : context;
+			if (nodeName.displayName === 'Lazy') {
+				// lazy loaded components
+				const { default: component } = await nodeName.loader();
+				console.log(component);
+				
+				rendered = component(props, cctx)
+			}
+			else if (!nodeName.prototype || typeof nodeName.prototype.render!=='function') {
 				// stateless functional components
 				rendered = nodeName.call(vnode.__c, props, cctx);
 			}
@@ -101,14 +105,14 @@ function renderToString(vnode, context, opts, inner, isSvgMode, selectValue) {
 				c.context = context;
 				if (nodeName.getDerivedStateFromProps) c.state = assign(assign({}, c.state), nodeName.getDerivedStateFromProps(c.props, c.state));
 				else if (c.componentWillMount) c.componentWillMount();
-				rendered = c.render(c.props, c.state, c.context);
+				rendered = c.render(c.props, c.state = {}, c.context);
 			}
 
 			if (c.getChildContext) {
 				context = assign(assign({}, context), c.getChildContext());
 			}
 
-			return renderToString(rendered, context, opts, opts.shallowHighOrder!==false, isSvgMode, selectValue);
+			return await renderToString(rendered, context, opts, opts.shallowHighOrder!==false, isSvgMode, selectValue);
 		}
 	}
 
@@ -207,7 +211,7 @@ function renderToString(vnode, context, opts, inner, isSvgMode, selectValue) {
 
 			if (child!=null && child!==false) {
 				let childSvgMode = nodeName==='svg' ? true : nodeName==='foreignObject' ? false : isSvgMode,
-					ret = renderToString(child, context, opts, true, childSvgMode, selectValue);
+					ret = await renderToString(child, context, opts, true, childSvgMode, selectValue);
 
 				if (pretty && !hasLarge && isLargeString(ret)) hasLarge = true;
 
